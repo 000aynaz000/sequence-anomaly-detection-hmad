@@ -1,149 +1,134 @@
-# Sequence Anomaly Detection: From OC-SVM to Hidden Markov Models
+# Real-Time Object Detection and Tracking
 
-Machine learning course project, Sharif University of Technology, Spring 2026 (1405).
+A Signals and Systems course project at Sharif University of Technology (Spring 2025). The project combines pretrained YOLOv8n object detection with a custom frequency-domain correlation-filter tracker, **CreativeTracker**, for single-target tracking in video.
 
-This project investigates when explicitly modeling latent temporal structure improves one-class anomaly detection over conventional fixed-vector representations. It compares RBF One-Class SVM (OC-SVM) with a simplified Hidden Markov Anomaly Detection (HMAD) framework on ECG5000 and controlled synthetic datasets, including categorical bioinformatics-inspired sequences and multivariate wind turbine simulations.
+Rather than running the detector on every frame, the system searches for a user-selected object class during an initial detection window. Once a target is found, the tracker estimates its position in subsequent frames using appearance features and motion prediction.
 
-## Methods
+![Tracking example](figures/skiing-02.png)
 
-- OC-SVM baselines with flattened sequences, global statistics and window-level statistics; feature scaling fitted on training data only.
-- Markov chains, Gaussian HMMs and log-domain Viterbi decoding; experiments on numerical underflow and latent state recovery.
-- Simplified HMAD: infer hidden paths, construct joint features from normalized transition counts and state-dependent mean emissions, and train an OC-SVM on those features. Iteratively update the HMM using decoded states. The categorical and multivariate experiments extend the representation to their respective observation types.
-- Evaluation using ROC-AUC, precision, recall, F1, confusion matrices and sensitivity experiments. Labels are used to evaluate test predictions, not to fit the one-class models.
+## Method
 
-## 1. ECG5000: real ECG heartbeat sequences
-
-The original training/test split was retained. Class 1 was treated as normal and classes 2–5 as anomalies.
-
-| Training (normal only) | Test | Normal test | Anomalous test | Sequence length |
-| ---: | ---: | ---: | ---: | ---: |
-| 292 | 4,500 | 2,627 | 1,873 | 140 |
-
-Results at `nu = 0.10` (from saved notebook outputs and Sections 3–5 of the report):
-
-| Method | ROC-AUC | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: | ---: |
-| OC-SVM, flattened | **0.9840** | 0.8314 | 0.9979 | 0.9071 |
-| OC-SVM, window summary | 0.9823 | 0.8319 | 0.9984 | **0.9075** |
-| OC-SVM, global summary | 0.9518 | 0.8124 | 0.9274 | 0.8661 |
-| HMAD with Viterbi | 0.9577 | **0.8419** | 0.9466 | 0.8912 |
-| HMAD, all-one states (ablation) | 0.5000 | 0.4162 | 1.0000 | 0.5878 |
-
-Flattened OC-SVM performed best in ROC-AUC. HMAD achieved slightly higher precision and fewer false positives (333 vs. 379), but lower recall and more false negatives (100 vs. 4). Thus, latent modeling did not outperform the strongest baseline overall on this benchmark.
-
-![ECG5000 feature representation comparison](figures/ecg5000-feature-comparison.png)
-
-## 2. Controlled synthetic HMM experiment
-
-A two-state Gaussian HMM was used to study temporal anomalies with disrupted transition patterns. Training used 200 normal sequences of length 100; evaluation used 100 normal and 50 anomalous sequences. The training experiment recovered 99.53% of latent states (with the experiment's state labeling) and stopped after two iterations.
-
-| Method | ROC-AUC | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: | ---: |
-| HMAD with Viterbi | **0.9646** | **0.7077** | 0.9200 | **0.8000** |
-| HMAD, all-one states | 0.5471 | 0.3333 | 1.0000 | 0.5000 |
-| Flattened OC-SVM, same data | 0.6286 | 0.4677 | 0.5800 | 0.5179 |
-
-Here the temporal representation substantially improves detection over the same-data flattened baseline. Removing the inferred state path reduces ROC-AUC by 0.4175.
-
-![Controlled synthetic experiment](figures/synthetic-hmm-ablation-roc.png)
-
-## 3. Synthetic Gaussian sequences (Section 6, Candidate A)
-
-The required experiment uses 200 normal training sequences and 100 test sequences of length 100. Normal observations follow N(0, 1); anomalous blocks follow N(4, 1). At 10% test anomalies and a block length of 20:
-
-| Method | ROC-AUC | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: | ---: |
-| OC-SVM, flattened | 1.0000 | 0.2041 | 1.0000 | 0.3390 |
-| OC-SVM, global summary | 1.0000 | 0.3571 | 1.0000 | 0.5263 |
-| OC-SVM, window summary | 1.0000 | 0.2326 | 1.0000 | 0.3774 |
-| Simplified HMAD | 1.0000 | **0.3704** | 1.0000 | **0.5405** |
-
-All methods rank the anomalies perfectly in this specific setting, but their threshold-based precision differs. The following separate sensitivity experiment shows the effect of anomaly duration:
-
-| Block length | Flattened OC-SVM ROC-AUC | HMAD ROC-AUC |
-| ---: | ---: | ---: |
-| 5 | 1.0000 | 0.7633 |
-| 10 | 1.0000 | 0.9956 |
-| 20 | 1.0000 | 1.0000 |
-| 40 | 1.0000 | 1.0000 |
-
-The notebook also varies the test anomaly fraction (1%, 5%, 10%, 20%) and number of anomalous blocks (1–3). The Gaussian HMAD run reached its 10-iteration limit, and the learned transitions approached an identity matrix; perfect ranking on strong mean-shift anomalies should not be interpreted as reliable latent state recovery.
-
-![Gaussian block length sensitivity](figures/gaussian-block-length.png)
-
-## 4. Bioinformatics-inspired categorical sequences (Candidate B, bonus)
-
-Synthetic sequences of length 120, with four categorical symbols and four latent functional states. Structural anomalies are created by disrupting sequence order. The experiment uses 200 normal training and 200 test sequences (100 anomalous).
-
-| Method | ROC-AUC | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: | ---: |
-| OC-SVM, global composition | 0.5671 | 0.6129 | 0.1900 | 0.2901 |
-| OC-SVM, bigram frequencies | 0.7251 | 0.7286 | 0.5100 | 0.6000 |
-| OC-SVM, flattened one-hot | **1.0000** | 0.7246 | 1.0000 | 0.8403 |
-| Categorical HMAD | 0.9968 | **0.8197** | 1.0000 | **0.9009** |
-
-The categorical HMAD has the highest F1 at the evaluated decision threshold, although flattened one-hot OC-SVM has slightly higher ROC-AUC. These are simulated biological-style sequences, not real genomic data.
-
-![Categorical sequence comparison](figures/categorical-comparison.png)
-
-## 5. Multivariate wind turbine simulation (Candidate C, bonus)
-
-Synthetic wind-speed, gearbox-vibration and gearbox-temperature sequences, with two operating states and three injected anomaly types (wind shift, high turbulence and mechanical fault). Training: 200 normal sequences. Test: 200 sequences, 100 anomalous. Length: 100 time steps.
-
-| Method | ROC-AUC | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: | ---: |
-| OC-SVM, flattened | 0.8806 | 0.6929 | 0.8800 | 0.7753 |
-| OC-SVM, global summary | **0.9484** | 0.7845 | **0.9100** | **0.8426** |
-| OC-SVM, window summary | 0.9150 | 0.7417 | 0.8900 | 0.8091 |
-| Multivariate HMAD | 0.8723 | **0.8132** | 0.7400 | 0.7749 |
-
-The global-summary baseline performs best overall; HMAD has the highest precision. Additional experiments compare anomaly types and block lengths. No real turbine sensor data are used.
-
-![Wind turbine experiment](figures/wind-turbine-comparison.png)
-
-## Key takeaways
-
-- The best representation depends on the anomaly mechanism: OC-SVM performs strongly for distinctive waveform shapes and large mean shifts, whereas latent-state modeling helps when anomalous transition structure is the main signal.
-- The Viterbi ablations show the value of inferred state paths in the implemented HMAD model.
-- ROC-AUC measures score ranking; it does not guarantee high precision or F1 at a fixed decision threshold.
-- These are academic benchmark experiments, not a clinically validated ECG diagnostic system. Results reflect the saved experimental runs and are not cross-dataset generalization guarantees.
-
-## Repository contents
-
-| File / folder | Purpose |
-| --- | --- |
-| [`ML_Project.ipynb`](ML_Project.ipynb) | Original notebook with saved outputs, all simulation questions and bonus experiments |
-| `generate_data.py` | Course-provided synthetic Gaussian data helper |
-| `prepare_ecg5000.py` | Recreates the exact ECG5000 arrays used by the notebook from source files |
-| `ECG5000_prepared/metadata.json` | Dataset and label definitions |
-| `requirements.txt` | Python dependencies |
-| `figures/` | Selected figures extracted from saved notebook outputs |
-| `reports/` | Persian project reports with full methodology and results |
-
-## How to run
-
-With Python 3 installed, open a terminal in the repository root:
-
-```bash
-python -m pip install -r requirements.txt
-python prepare_ecg5000.py
-python -m jupyter notebook ML_Project.ipynb
+```text
+Input video -> YOLOv8n (initial detection window) -> initial bounding box
+                                                        |
+                                                        v
+        Kalman prediction -> HOG-style + Lab features -> FFT correlation
+                                                        |
+                                                        v
+                                              PSR confidence check
+                                              /                  \
+                                    Low confidence           Reliable match
+                                    Prediction only     Correct position, adapt scale,
+                                                        update appearance model
+                                              \                  /
+                                               Annotated video output
 ```
 
-Run the notebook cells in order from the repository root. The preparation script downloads the two official `.ts` files, verifies their checksums, and creates `ECG5000_prepared/ecg5000_oneclass.npz`. If the download is unavailable, manually obtain the files from the dataset link below and place them in `ECG5000_prepared/raw/`, then run the preparation script. Synthetic datasets are generated by the code. Running the notebook creates a local `Results/` directory; generated data and outputs are excluded by `.gitignore`. The saved notebook outputs can be viewed without running the experiments. Exact dependency versions from the original run were not recorded in the supplied files.
+### CreativeTracker
 
-## Reports
+- **Appearance features:** nine gradient-orientation channels derived from Sobel gradients (HOG-style features), concatenated with three normalized CIELAB color channels.
+- **Frequency-domain localization:** multi-channel correlation filtering with a Gaussian target response, FFT/IFFT operations, and regularized filter estimation.
+- **Motion prediction:** a four-state constant-velocity Kalman filter for object center and velocity, with position measurements from the correlation response.
+- **Occlusion handling:** peak-to-sidelobe ratio (PSR) gates measurement and appearance updates; when confidence is low, the tracker falls back to the predicted position.
+- **Scale adaptation:** evaluates three candidate scales and adjusts bounding-box dimensions using a weighted update.
+- **Online learning:** gradually updates the filter from reliable observations. The original implementation also reinitializes filter arrays when their dimensions change.
 
-- [Sections 1–5: Theory, OC-SVM, HMMs and HMAD experiments (PDF)](reports/Report_Section_1_to_5.pdf)
-- [Section 6: Required and bonus experiments (PDF)](reports/Report_Section_6.pdf)
+| Parameter | Value in the submitted implementation |
+|---|---:|
+| Appearance update rate | 0.075 |
+| Scale factor | 1.05 |
+| PSR threshold | 0.05 |
+| Kalman process noise covariance multiplier | 0.03 |
+| Kalman measurement noise covariance multiplier | 0.5 |
+| Filter regularization | 0.0001 |
 
-## Dataset and attribution
+## Comparison with classical trackers
 
-- [ECG5000 — UCR/UEA archive dataset record](https://doi.org/10.5281/zenodo.11186692), maintained by the TSML Archive Maintainers. Raw dataset files are not redistributed in this repository.
-- [UCR Time Series Classification Archive](https://www.cs.ucr.edu/~eamonn/time_series_data_2018/).
-- [Original project data mirror (AutonLab/Timeseries-PILE)](https://huggingface.co/datasets/AutonLab/Timeseries-PILE/tree/main/classification/UCR/ECG5000).
-- Course-provided data-generation helper is attributed to the course materials; no claim of original authorship is made for that helper.
+The report discusses MOSSE, KCF and CSRT as classical correlation-filter tracking approaches. The notebook includes a separate **CSRT video-processing baseline** using the same initial YOLO detection strategy. MOSSE and KCF are discussed in the report and their constructors are exposed when available; separate full experimental runs for those two methods are not included in the submitted notebook.
+
+| Method | Main approach | Qualitative trade-off discussed in the report |
+|---|---|---|
+| MOSSE | Grayscale correlation filter | Fast; limited handling of appearance changes |
+| KCF | Kernelized correlation filter | Efficient; limited scale and occlusion handling |
+| CSRT | Channel and spatial reliability | More robust tracking at greater computational cost |
+| CreativeTracker | Gradient and color features, FFT correlation, Kalman prediction, PSR gating | Adaptive tracking with additional computational complexity |
+
+This is a qualitative comparison, not a measured accuracy or speed ranking.
+
+## Experimental results
+
+The original project report (pp. 12–14) documents the following observations:
+
+- A target skier was tracked before and after a temporary partial occlusion by another skier.
+- The target bounding box changed in size as the skier's apparent scale changed.
+- A new person entering the scene after frame 50 was not tracked, consistent with the initial-only detection design.
+- Additional tracking examples show a target in a dusty scene and a car on a road.
+
+### Recorded output frames
+
+| Scene | Current FPS (overlay) | Tracking FPS (overlay) |
+|---|---:|---:|
+| Skiing, figure 1 | 17.23 | 9.65 |
+| Skiing, figure 2 | 15.62 | 10.22 |
+| Skiing, figure 3 | 19.58 | 12.71 |
+| Dusty scene, figure 4 | 19.06 | 7.49 |
+| Car tracking, figure 5 | 200.50 | 63.41 |
+
+These are values transcribed from the original screenshots, not a controlled benchmark or whole-video average. The original notebook's running tracking-FPS calculation used an imperfect frame counter; the GitHub notebook corrects that counter. The historical screenshot values are retained as recorded and are not claimed to represent corrected measurements. Performance depends on hardware, resolution, target size and video content. No ground-truth IoU, precision, success-rate or matched quantitative baseline results are provided in the submitted report.
+
+| Before crossing | During crossing | After crossing |
+|---|---|---|
+| ![Skier before crossing](figures/skiing-01.png) | ![Skier during crossing](figures/skiing-02.png) | ![Skier after crossing](figures/skiing-03.png) |
+
+| Dusty scene | Road scene |
+|---|---|
+| ![Dust scene](figures/dust-scene.png) | ![Car tracking](figures/car-tracking.png) |
+
+For the original methodology, qualitative comparison and all recorded examples, see the [full project report](reports/report.pdf).
+
+## Run in Google Colab
+
+1. Download or open [object_tracking.ipynb](object_tracking.ipynb) in Google Colab.
+2. Execute the dependency installation cell. Restart the runtime if OpenCV was already imported and its tracker APIs are unavailable. OpenCV contrib is needed for the CSRT baseline. Avoid installing multiple OpenCV wheel variants in a clean environment because they share the `cv2` namespace.
+3. Upload a video that you have permission to use. The original submission does not contain source videos or output MP4 files.
+4. Choose a detectable class (for example, `person` or `car`) and enter a positive number of initial detection frames (for example, `50`).
+5. Run the custom tracker cells. The notebook downloads pretrained `yolov8n.pt` if necessary (internet access required) and saves `output_video.mp4`.
+6. Optionally run the CSRT baseline cell to produce `output_video_csrt.mp4`.
+
+The notebook uses Colab's upload and download API; it is not an unmodified local Jupyter workflow. The package list is in [requirements.txt](requirements.txt). The saved report figures are from the original course submission; an end-to-end video run has not been repeated for this repository preparation.
+
+## Repository structure
+
+```text
+real-time-object-tracking/
+├── README.md
+├── object_tracking.ipynb
+├── requirements.txt
+├── .gitignore
+├── reports/
+│   └── report.pdf
+└── figures/
+    ├── skiing-01.png
+    ├── skiing-02.png
+    ├── skiing-03.png
+    ├── dust-scene.png
+    └── car-tracking.png
+```
+
+## Scope and limitations
+
+- Single-target tracking, not multi-object tracking. Detection stops after the first matching object is found.
+- The motion model assumes approximately constant velocity and does not explicitly re-detect a lost target after initialization.
+- PSR and scale parameters are fixed; robust behavior under severe occlusion or long-term target loss has not been quantitatively established.
+- For repository preparation, the `CreativeTracker` class was preserved unchanged. Notebook edits are limited to dependency setup, imports, optional OpenCV tracker API compatibility, accurate counting of tracking frames for the running FPS overlay, and section headings. Stale session outputs were cleared. The custom class was smoke-tested on a synthetic image; the full video pipeline was not rerun.
+- The report is reproduced with student numbers removed from the cover. The experimental content is unchanged. Example images are resized copies of report illustrations. The underlying footage is not included; confirm publication rights for any third-party footage or derived images before making the repository public.
 
 ## Authors
 
-Aynaz Rezaeizadeh and Fatemeh Hassanpour Amiri — undergraduate course project, Sharif University of Technology. 
+- Sarvin Moosavi
+- Armin Tavakoli
+- Aynaz Rezaeizadeh
+
+Electrical Engineering Department, Sharif University of Technology.
+
+Original collaborative repository: [Signal_Project](https://github.com/armin-tavakoli/Signal_Project).

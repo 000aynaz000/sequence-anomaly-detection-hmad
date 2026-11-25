@@ -1,5 +1,0 @@
-numpy
-ultralytics
-opencv-contrib-python
-ipywidgets
-ipython

@@ -146,4 +146,4 @@ Run the notebook cells in order from the repository root. The preparation script
 
 ## Authors
 
-Aynaz Rezaeizadeh and Fatemeh Hassanpour Amiri — undergraduate course project, Sharif University of Technology. The reports contain the original author names; student numbers on the first report cover were removed for public sharing.
+Aynaz Rezaeizadeh and Fatemeh Hassanpour Amiri — undergraduate course project, Sharif University of Technology. 
